@@ -1,0 +1,18 @@
+{
+  "name": "split-workbench",
+  "displayName": "Split Workbench",
+  "version": "0.1.0",
+  "description": "Smart auto-splitting side pane workbench for Antigravity: view files, localhost & local HTML web previews, real interactive PTY terminals, and session artifacts side-by-side or stacked with per-pane colors and Quote support.",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "RZRZ-Q",
+    "url": "https://github.com/RZRZ-Q"
+  },
+  "homepage": "https://github.com/RZRZ-Q/antigravity-split-workbench",
+  "repository": "https://github.com/RZRZ-Q/antigravity-split-workbench",
+  "suggestedPrompts": [
+    "Open the Split Workbench side pane to view files and terminal side-by-side",
+    "Start the local dev server and preview it alongside my source files",
+    "Review this conversation's artifacts and workspace files together"
+  ]
+}

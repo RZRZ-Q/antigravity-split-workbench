@@ -1,0 +1,6 @@
+{
+  "name": "split-workbench-sidecar",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Smart BSP auto-splitting workbench sidecar for Antigravity"
+}
