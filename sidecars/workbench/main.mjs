@@ -897,6 +897,7 @@ const server = createServer(async (req, res) => {
       req.method === 'GET' &&
       (pathname === '/styles.css' ||
         pathname === '/layout.js' ||
+        pathname === '/i18n.js' ||
         pathname === '/app.js' ||
         pathname.startsWith('/vendor/'))
     ) {

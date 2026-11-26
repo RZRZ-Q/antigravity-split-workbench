@@ -13,6 +13,8 @@
  */
 (() => {
   const L = window.SplitLayout;
+  const I18N = window.SWI18n || { lang: 'en', t: (k) => k, colorName: (id) => id, applyDom() {} };
+  const t = I18N.t;
   const $ = (id) => document.getElementById(id);
 
   const stageEl = $('stage');
@@ -40,14 +42,14 @@
 
   // Harmonious 8-color palette for auto-distinguishing split panes (works on light & dark themes)
   const PANE_COLORS = [
-    { id: 'blue',    name: '海蓝',   hex: '#3b82f6' },
-    { id: 'emerald', name: '翠绿',   hex: '#10b981' },
-    { id: 'amber',   name: '琥珀',   hex: '#f59e0b' },
-    { id: 'violet',  name: '紫罗兰', hex: '#8b5cf6' },
-    { id: 'rose',    name: '玫瑰粉', hex: '#f43f5e' },
-    { id: 'cyan',    name: '青蓝',   hex: '#06b6d4' },
-    { id: 'orange',  name: '暖橙',   hex: '#f97316' },
-    { id: 'pink',    name: '洋红',   hex: '#ec4899' },
+    { id: 'blue',    name: I18N.colorName('blue'),    hex: '#3b82f6' },
+    { id: 'emerald', name: I18N.colorName('emerald'), hex: '#10b981' },
+    { id: 'amber',   name: I18N.colorName('amber'),   hex: '#f59e0b' },
+    { id: 'violet',  name: I18N.colorName('violet'),  hex: '#8b5cf6' },
+    { id: 'rose',    name: I18N.colorName('rose'),    hex: '#f43f5e' },
+    { id: 'cyan',    name: I18N.colorName('cyan'),    hex: '#06b6d4' },
+    { id: 'orange',  name: I18N.colorName('orange'),  hex: '#f97316' },
+    { id: 'pink',    name: I18N.colorName('pink'),    hex: '#ec4899' },
   ];
 
   function pickNextDistinctColor(root, avoidHex = '') {
@@ -230,9 +232,12 @@
   }
 
   function syncTheme() {
+    const forcedTheme = (urlParams.get('theme') || '').toLowerCase();
     const bgRaw = getComputedStyle(document.documentElement).getPropertyValue('--background').trim();
     const lum = parseCssColorLuminance(bgRaw);
-    if (lum !== null) {
+    if (forcedTheme === 'light' || forcedTheme === 'dark') {
+      isLightTheme = forcedTheme === 'light';
+    } else if (lum !== null) {
       isLightTheme = lum > 0.55;
     } else if (window.matchMedia) {
       isLightTheme = window.matchMedia('(prefers-color-scheme: light)').matches;
@@ -492,7 +497,7 @@
     setActivePane(paneId);
     renderStage();
     scheduleSaveState();
-    showToast(nextDir === 'horizontal' ? '已切换为左右分屏 ◫' : '已切换为上下分屏 ⬓', 1400);
+    showToast(nextDir === 'horizontal' ? t('switchedHoriz') : t('switchedVert'), 1400);
   }
 
   function setSplitMode(mode, persist = true) {
@@ -641,15 +646,23 @@
     quotePopoverEl.classList.add('hidden');
   }
 
-  function showQuotePopover(ctx, clientX, clientY) {
+  function showQuotePopover(ctx, clientX, clientY, { placeBelow = false } = {}) {
     pendingQuoteContext = ctx;
     quoteLocEl.textContent = formatQuoteLoc(ctx);
     quotePopoverEl.classList.remove('hidden');
     const rect = quotePopoverEl.getBoundingClientRect();
     const pad = 8;
     let left = Math.max(pad, Math.min(window.innerWidth - rect.width - pad, clientX - rect.width / 2));
-    let top = clientY - rect.height - 10;
-    if (top < 40) top = Math.min(window.innerHeight - rect.height - pad, clientY + 14);
+    let top;
+    if (placeBelow) {
+      top = clientY + 8;
+      if (top + rect.height > window.innerHeight - pad) {
+        top = Math.max(40, clientY - rect.height - 10);
+      }
+    } else {
+      top = clientY - rect.height - 10;
+      if (top < 40) top = Math.min(window.innerHeight - rect.height - pad, clientY + 14);
+    }
     quotePopoverEl.style.left = `${Math.round(left)}px`;
     quotePopoverEl.style.top = `${Math.round(top)}px`;
   }
@@ -659,7 +672,7 @@
     const loc = formatQuoteLoc(ctx);
     const cleanUri = formatCleanFileUri(ctx);
     const mdQuote = formatMarkdownQuote(ctx);
-    const commentText = customComment.trim() || `引用 ${loc}`;
+    const commentText = customComment.trim() || t('quotePrefix', { loc });
 
     if (window.sidecar?.ui?.addArtifactComment) {
       window.sidecar.ui.addArtifactComment({
@@ -669,10 +682,10 @@
         pageTitle: loc,
       });
       await copyTextSilent(mdQuote);
-      showToast(`已附带 Quote (${loc}) 到下条消息，同时已复制（可直接 ⌘V）`, 2600);
+      showToast(t('toastQuoted', { loc }), 2600);
     } else {
       await copyTextSilent(mdQuote);
-      showToast(`已复制引用 ${loc}，在对话输入框 ⌘V 即可`);
+      showToast(t('toastCopiedQuote', { loc }));
     }
   }
 
@@ -683,16 +696,16 @@
     if (window.sidecar?.agent?.sendMessage && convId()) {
       try {
         await window.sidecar.agent.sendMessage(msg, convId());
-        showToast(`已直接发送引用 (${formatQuoteLoc(ctx)}) 到对话`);
+        showToast(t('toastSentNow', { loc: formatQuoteLoc(ctx) }));
         return;
       } catch (err) {
         await copyTextSilent(msg);
-        showToast(`直接发送失败（已复制到剪贴板）: ${err.message}`, 3000);
+        showToast(t('toastSendFailed', { err: err.message }), 3000);
         return;
       }
     }
     await copyTextSilent(msg);
-    showToast('已复制到剪贴板，在对话框 ⌘V 发送');
+    showToast(t('toastCopied'));
   }
 
   function openCommentBar(ctx) {
@@ -735,7 +748,7 @@
     hideQuotePopover();
     if (!ctx) return;
     await copyTextSilent(formatMarkdownQuote(ctx));
-    showToast(`已复制引用 ${formatQuoteLoc(ctx)}`);
+    showToast(t('toastCopiedQuote', { loc: formatQuoteLoc(ctx) }));
   });
 
   $('comment-send').addEventListener('click', submitComment);
@@ -788,7 +801,7 @@
     colorBtn.type = 'button';
     colorBtn.className = 'pane-color-btn';
     colorBtn.draggable = false;
-    colorBtn.title = '点击修改此窗口颜色';
+    colorBtn.title = t('colorBtnTitle');
     const dot = document.createElement('span');
     dot.className = `pane-type-dot ${leaf.paneType}`;
     colorBtn.appendChild(dot);
@@ -812,20 +825,20 @@
     const universalActions = document.createElement('div');
     universalActions.className = 'pane-actions';
 
-    const btnToggleDir = makeIconBtn('⇄', '切换当前窗口的上下 / 左右分屏 (⌘⇧R)', () => {
+    const btnToggleDir = makeIconBtn('⇄', t('toggleDirTitle'), () => {
       togglePaneSplitOrientation(leaf.id);
     });
     btnToggleDir.classList.add('hidden');
-    const btnSplitRight = makeIconBtn('◫', '向右新拆一个窗口', () => {
+    const btnSplitRight = makeIconBtn('◫', t('splitRightTitle'), () => {
       setActivePane(leaf.id);
       openPane('empty', {}, { forceDirection: 'horizontal' });
     });
-    const btnSplitDown = makeIconBtn('⬓', '向下新拆一个窗口', () => {
+    const btnSplitDown = makeIconBtn('⬓', t('splitDownTitle'), () => {
       setActivePane(leaf.id);
       openPane('empty', {}, { forceDirection: 'vertical' });
     });
-    const btnMax = makeIconBtn('⤢', '最大化 / 还原', () => toggleMaximize(leaf.id));
-    const btnClose = makeIconBtn('✕', '关闭面板', () => closePane(leaf.id));
+    const btnMax = makeIconBtn('⤢', t('maxTitle'), () => toggleMaximize(leaf.id));
+    const btnClose = makeIconBtn('✕', t('closePaneTitle'), () => closePane(leaf.id));
 
     universalActions.append(btnToggleDir, btnSplitRight, btnSplitDown, btnMax, btnClose);
     header.append(colorBtn, titleEl, statusPill, customActions, universalActions);
@@ -930,28 +943,28 @@
   // 1. Empty / Launcher Pane
   // -------------------------------------------------------------------------
   function mountEmptyPane(view, leaf) {
-    view.titleEl.textContent = '新面板';
+    view.titleEl.textContent = t('newPane');
     const wrap = document.createElement('div');
     wrap.className = 'empty-pane';
     wrap.innerHTML = `
       <div class="empty-title">Split Workbench</div>
-      <div class="empty-desc">打开任意面板将自动根据格子宽高比智能分屏（宽大于高左右分，否则上下分）。可拖拽分割线调尺寸，拖标题栏互换位置。</div>
+      <div class="empty-desc">${escapeHtml(t('emptyDesc'))}</div>
       <div class="quick-grid">
         <button class="quick-card" data-action="file" type="button">
-          <span class="quick-card-title">📄 打开文件</span>
-          <span class="quick-card-sub">代码 / MD / 图片 (⌘P)</span>
+          <span class="quick-card-title">${escapeHtml(t('cardFile'))}</span>
+          <span class="quick-card-sub">${escapeHtml(t('cardFileSub'))}</span>
         </button>
         <button class="quick-card" data-action="web" type="button">
-          <span class="quick-card-title">🌐 网页预览</span>
-          <span class="quick-card-sub">localhost / 文档站</span>
+          <span class="quick-card-title">${escapeHtml(t('cardWeb'))}</span>
+          <span class="quick-card-sub">${escapeHtml(t('cardWebSub'))}</span>
         </button>
         <button class="quick-card" data-action="terminal" type="button">
-          <span class="quick-card-title">💻 交互终端</span>
-          <span class="quick-card-sub">真实 zsh PTY 会话</span>
+          <span class="quick-card-title">${escapeHtml(t('cardTerm'))}</span>
+          <span class="quick-card-sub">${escapeHtml(t('cardTermSub'))}</span>
         </button>
         <button class="quick-card" data-action="artifact" type="button">
-          <span class="quick-card-title">📑 会话产物</span>
-          <span class="quick-card-sub">当前对话 Artifacts</span>
+          <span class="quick-card-title">${escapeHtml(t('cardArtifact'))}</span>
+          <span class="quick-card-sub">${escapeHtml(t('cardArtifactSub'))}</span>
         </button>
       </div>
     `;
@@ -984,7 +997,7 @@
     let editorEl = null;
     let pollTimer = null;
 
-    view.titleEl.textContent = currentPath ? basename(currentPath) : (isArtifact ? 'Artifacts' : '文件');
+    view.titleEl.textContent = currentPath ? basename(currentPath) : (isArtifact ? 'Artifacts' : t('paneFile'));
 
     // Subbar
     const subbar = document.createElement('div');
@@ -1091,13 +1104,14 @@
       updateLineSelectionHighlight();
       const ctx = getActiveSelectionContext();
       if (ctx) {
-        const r = lnCell.getBoundingClientRect();
-        showQuotePopover(ctx, r.right + 110, r.top);
+        const endRow = scrollEl.querySelector(`tr[data-line="${selectedLineEnd || ln}"]`) || lnCell.parentElement;
+        const r = endRow.getBoundingClientRect();
+        showQuotePopover(ctx, r.left + 175, r.bottom, { placeBelow: true });
       }
     });
 
     // Header actions
-    const btnPreviewHtml = makeMiniBtn('🌐 预览', '免起服务直接分屏预览此 HTML 文件', async () => {
+    const btnPreviewHtml = makeMiniBtn(t('previewHtml'), t('previewHtmlTitle'), async () => {
       if (!currentPath) return;
       try {
         const res = await apiGet(`/api/preview-url?path=${encodeURIComponent(currentPath)}`);
@@ -1105,55 +1119,55 @@
         setActivePane(leaf.id);
         openPane('web', { url: previewUrl, localHtmlPath: currentPath }, { deduplicate: true });
       } catch (err) {
-        showToast(`无法预览: ${err.message}`);
+        showToast(t('previewErr', { err: err.message }));
       }
     });
     btnPreviewHtml.classList.add('hidden');
 
-    const btnToggleMd = makeMiniBtn('源码', '切换 Markdown 渲染 / 源码', () => {
+    const btnToggleMd = makeMiniBtn(t('sourceBtn'), t('toggleMdTitle'), () => {
       mdPreview = !mdPreview;
-      btnToggleMd.textContent = mdPreview ? '源码' : '预览';
+      btnToggleMd.textContent = mdPreview ? t('sourceBtn') : t('previewBtn');
       renderFileContent();
     });
     btnToggleMd.classList.add('hidden');
 
-    const btnQuote = makeMiniBtn('❝ Quote', '引用选中代码或行到对话（也可直接划词或点行号）', () => {
+    const btnQuote = makeMiniBtn(t('quoteBtn'), t('quoteBtnTitle'), () => {
       const ctx = getActiveSelectionContext();
       if (!ctx) {
-        showToast('先划选文本，或点击左侧行号选中行');
+        showToast(t('quoteSelectHint'));
         return;
       }
       sendDirectQuote(ctx);
     });
 
-    const btnEdit = makeMiniBtn('编辑', '切换轻量编辑模式', () => {
+    const btnEdit = makeMiniBtn(t('editBtn'), t('editTitle'), () => {
       if (!fileData || (fileData.kind !== 'text' && fileData.kind !== 'markdown')) return;
       editMode = !editMode;
       renderFileContent();
     });
     btnEdit.classList.add('hidden');
 
-    const btnSave = makeMiniBtn('保存', '保存修改 (⌘S)', async () => {
+    const btnSave = makeMiniBtn(t('saveBtn'), t('saveTitle'), async () => {
       if (!editorEl || !currentPath) return;
       try {
         const res = await apiPost('/api/file/write', { path: currentPath, content: editorEl.value });
         fileData.content = editorEl.value;
         fileData.mtimeMs = res.mtimeMs;
         editMode = false;
-        showToast(`已保存 ${basename(currentPath)}`);
+        showToast(t('savedToast', { name: basename(currentPath) }));
         renderFileContent();
       } catch (err) {
-        showToast(`保存失败: ${err.message}`);
+        showToast(t('saveErr', { err: err.message }));
       }
     }, true);
     btnSave.classList.add('hidden');
 
-    const btnRefresh = makeIconBtn('↻', '重新加载', () => loadFile(false));
+    const btnRefresh = makeIconBtn('↻', t('refresh'), () => loadFile(false));
 
     view.customActions.append(btnPreviewHtml, btnToggleMd, btnQuote, btnEdit, btnSave, btnRefresh);
 
     function flashUpdated() {
-      view.statusPill.textContent = '已更新';
+      view.statusPill.textContent = t('updatedPill');
       view.statusPill.classList.remove('hidden');
       setTimeout(() => view.statusPill.classList.add('hidden'), 1800);
     }
@@ -1172,7 +1186,7 @@
       if (fileData && !editMode) {
         if (fileData.kind === 'markdown' && mdPreview) {
           mdPreview = false;
-          btnToggleMd.textContent = '预览';
+          btnToggleMd.textContent = t('previewBtn');
         }
         renderFileContent();
         requestAnimationFrame(scrollToHighlightedLine);
@@ -1272,7 +1286,7 @@
       btnPreviewHtml.classList.toggle('hidden', !isHtml || editMode);
       btnToggleMd.classList.toggle('hidden', !isMd || editMode);
       btnEdit.classList.toggle('hidden', !isText || isArtifact);
-      btnEdit.textContent = editMode ? '取消' : '编辑';
+      btnEdit.textContent = editMode ? t('cancelBtn') : t('editBtn');
       btnSave.classList.toggle('hidden', !editMode);
       btnQuote.classList.toggle('hidden', !isText || editMode);
 
@@ -1302,7 +1316,7 @@
         const pdfUrl = withTokenUrl(`/api/file/raw?path=${encodeURIComponent(fileData.path)}`);
         scrollEl.innerHTML = `<iframe class="web-frame" src="${pdfUrl}" title="${escapeHtml(fileData.name)}"></iframe>`;
       } else if (fileData.kind === 'binary' || fileData.kind === 'too-large') {
-        scrollEl.innerHTML = `<div class="empty-pane"><div class="empty-title">${escapeHtml(fileData.name)}</div><div class="empty-desc">${escapeHtml(fileData.error || '二进制文件暂不支持文本预览')}</div></div>`;
+        scrollEl.innerHTML = `<div class="empty-pane"><div class="empty-title">${escapeHtml(fileData.name)}</div><div class="empty-desc">${escapeHtml(fileData.error || t('binaryUnsupported'))}</div></div>`;
       } else if (isMd && mdPreview) {
         renderMarkdown(fileData.content);
       } else {
@@ -1313,7 +1327,7 @@
     async function loadFile(preserveScroll = false) {
       if (!currentPath) {
         if (isArtifact) {
-          scrollEl.innerHTML = `<div class="empty-pane"><div class="empty-title">当前对话暂无产物</div><div class="empty-desc">Agent 生成计划、文档或图片产物后会自动出现在这里。</div></div>`;
+          scrollEl.innerHTML = `<div class="empty-pane"><div class="empty-title">${escapeHtml(t('noArtifactsTitle'))}</div><div class="empty-desc">${escapeHtml(t('noArtifactsDesc'))}</div></div>`;
         }
         return;
       }
@@ -1332,7 +1346,7 @@
         renderFileContent();
         if (preserveScroll) scrollEl.scrollTop = prevTop;
       } catch (err) {
-        scrollEl.innerHTML = `<div class="empty-pane"><div class="empty-title">无法加载文件</div><div class="empty-desc">${escapeHtml(err.message)}</div></div>`;
+        scrollEl.innerHTML = `<div class="empty-pane"><div class="empty-title">${escapeHtml(t('loadFileErr'))}</div><div class="empty-desc">${escapeHtml(err.message)}</div></div>`;
       }
     }
 
@@ -1345,7 +1359,7 @@
         if (appState.artifacts.length === 0) {
           const opt = document.createElement('option');
           opt.value = '';
-          opt.textContent = '（当前对话暂无 Artifacts）';
+          opt.textContent = t('noArtifactsOpt');
           artifactSelect.appendChild(opt);
           currentPath = '';
           loadFile(false);
@@ -1441,7 +1455,7 @@
     let currentUrl = leaf.state?.url || '';
     let localHtmlPath = leaf.state?.localHtmlPath || '';
     if (currentUrl && isSelfOriginUrl(currentUrl)) currentUrl = '';
-    view.titleEl.textContent = localHtmlPath ? basename(localHtmlPath) : (currentUrl ? shortHost(currentUrl) : '网页预览');
+    view.titleEl.textContent = localHtmlPath ? basename(localHtmlPath) : (currentUrl ? shortHost(currentUrl) : t('paneWeb'));
 
     const bar = document.createElement('div');
     bar.className = 'web-bar';
@@ -1449,18 +1463,18 @@
     const urlInput = document.createElement('input');
     urlInput.className = 'web-url-input';
     urlInput.type = 'text';
-    urlInput.placeholder = '输入端口 (如 5173)、网址，或本地 .html 路径...';
+    urlInput.placeholder = t('webPlaceholder');
     urlInput.value = localHtmlPath || currentUrl;
 
-    const btnGo = makeMiniBtn('前往', '打开网址或本地 HTML', () => navigate(urlInput.value));
-    const btnReload = makeIconBtn('↻', '刷新页面', () => {
+    const btnGo = makeMiniBtn(t('goBtn'), t('goBtnTitle'), () => navigate(urlInput.value));
+    const btnReload = makeIconBtn('↻', t('refresh'), () => {
       if (iframeEl && currentUrl) {
         iframeEl.src = currentUrl;
       } else {
         renderStartScreen();
       }
     });
-    const btnExt = makeIconBtn('↗', '在外部浏览器打开', () => {
+    const btnExt = makeIconBtn('↗', t('openExtTitle'), () => {
       if (currentUrl) window.open(currentUrl, '_blank', 'noopener,noreferrer');
     });
 
@@ -1503,7 +1517,7 @@
           localHtmlPath = res.path;
           normalized = `${location.origin}${res.previewPath}`;
         } catch (err) {
-          showToast(`本地 HTML 打开失败: ${err.message}`);
+          showToast(t('localHtmlErr', { err: err.message }));
           return;
         }
       } else if (!normalized.includes('/preview/')) {
@@ -1511,7 +1525,7 @@
       }
 
       if (isSelfOriginUrl(normalized)) {
-        showToast('已拦截：不能在工作台内嵌套打开工作台自身地址');
+        showToast(t('selfNestBlocked'));
         return;
       }
 
@@ -1549,11 +1563,11 @@
 
       // Detected local ports
       const portSection = document.createElement('div');
-      portSection.innerHTML = `<div class="section-label">本机正在监听的本地服务</div>`;
+      portSection.innerHTML = `<div class="section-label">${escapeHtml(t('detectedPorts'))}</div>`;
       const portChips = document.createElement('div');
       portChips.className = 'chip-list';
       if (ports.length === 0) {
-        portChips.innerHTML = `<span class="muted" style="font-size:12px;">暂未检测到本地开发端口，可直接在上方输入端口号（如 <code>3000</code> / <code>5173</code>）</span>`;
+        portChips.innerHTML = `<span class="muted" style="font-size:12px;">${t('noPortsHint')}</span>`;
       } else {
         for (const p of ports) {
           const c = document.createElement('button');
@@ -1570,7 +1584,7 @@
       // URLs mentioned in chat
       if (appState.chatLinks.urls.length > 0) {
         const chatSection = document.createElement('div');
-        chatSection.innerHTML = `<div class="section-label">本对话提到的网址</div>`;
+        chatSection.innerHTML = `<div class="section-label">${escapeHtml(t('chatUrlsLabel'))}</div>`;
         const urlChips = document.createElement('div');
         urlChips.className = 'chip-list';
         for (const item of appState.chatLinks.urls.slice(0, 10)) {
@@ -1588,7 +1602,7 @@
 
       const tip = document.createElement('div');
       tip.className = 'web-tip';
-      tip.textContent = '提示：localhost 本地开发服务和允许内嵌的文档站可直接在分屏中预览；如果某个外部网站设置了防 iframe 嵌入限制（X-Frame-Options），可点击右上角 ↗ 在系统浏览器中打开。';
+      tip.textContent = t('webTip');
       startEl.appendChild(tip);
 
       contentHost.innerHTML = '';
@@ -1646,10 +1660,10 @@
     let resizeTimer = null;
     let exitedBanner = null;
 
-    const btnQuoteTerm = makeMiniBtn('❝ Quote', '引用终端选中内容到对话', () => {
+    const btnQuoteTerm = makeMiniBtn(t('quoteBtn'), t('quoteTermTitle'), () => {
       const sel = term.getSelection()?.trim() || '';
       if (!sel) {
-        showToast('先在终端里选中一段日志或输出');
+        showToast(t('quoteTermHint'));
         return;
       }
       sendDirectQuote({
@@ -1665,8 +1679,8 @@
       btnQuoteTerm.classList.toggle('hidden', !hasSel);
     });
 
-    const btnClear = makeIconBtn('⌫', '清屏', () => term.clear());
-    const btnNewTerm = makeIconBtn('+', '再分屏开一个终端', () => {
+    const btnClear = makeIconBtn('⌫', t('clearTermTitle'), () => term.clear());
+    const btnNewTerm = makeIconBtn('+', t('newTermTitle'), () => {
       setActivePane(leaf.id);
       openPane('terminal', { cwd: cwd || appState.activeWorkspace });
     });
@@ -1699,8 +1713,8 @@
       if (exitedBanner) exitedBanner.remove();
       exitedBanner = document.createElement('div');
       exitedBanner.className = 'term-banner';
-      exitedBanner.innerHTML = `<span>终端已退出 (exit ${code})</span>`;
-      const restartBtn = makeMiniBtn('重启终端', '重新启动一个新的 shell', () => {
+      exitedBanner.innerHTML = `<span>${escapeHtml(t('termExited', { code }))}</span>`;
+      const restartBtn = makeMiniBtn(t('restartTerm'), t('restartTermTitle'), () => {
         exitedBanner?.remove();
         exitedBanner = null;
         term.reset();
@@ -1787,7 +1801,7 @@
           term.focus();
         }, 80);
       } catch (err) {
-        term.writeln(`\r\n[Split Workbench] 启动终端失败: ${err.message}`);
+        term.writeln(`\r\n[Split Workbench] ${t('termStartErr', { err: err.message })}`);
       }
     }
 
@@ -1857,12 +1871,12 @@
           const isHoriz = parentSplit.direction === 'horizontal';
           view.btnToggleDir.textContent = isHoriz ? '⇅' : '⇄';
           view.btnToggleDir.title = isHoriz
-            ? '当前左右分屏：点击切换为上下分屏 (⌘⇧R)'
-            : '当前上下分屏：点击切换为左右分屏 (⌘⇧R)';
+            ? t('toggleDirToVert')
+            : t('toggleDirToHoriz');
         }
       }
       view.btnMax.textContent = isMax ? '⤡' : '⤢';
-      view.btnMax.title = isMax ? '还原分屏' : '最大化';
+      view.btnMax.title = isMax ? t('restoreTitle') : t('maxTitle');
 
       if (isMax) {
         view.el.style.left = '0px';
@@ -1910,7 +1924,7 @@
   }
 
   function attachGutterDrag(gel, splitId) {
-    gel.title = '拖动调整大小｜双击均分｜右键切换上下/左右';
+    gel.title = t('gutterTitle');
     gel.addEventListener('dblclick', () => {
       appState.root = L.updateSplitRatio(appState.root, splitId, 0.5);
       renderStage();
@@ -1924,7 +1938,7 @@
       appState.root = L.toggleSplitDirection(appState.root, splitId);
       renderStage();
       scheduleSaveState();
-      showToast(nextDir === 'horizontal' ? '已切换为左右分屏 ◫' : '已切换为上下分屏 ⬓', 1400);
+      showToast(nextDir === 'horizontal' ? t('switchedHoriz') : t('switchedVert'), 1400);
     });
 
     gel.addEventListener('pointerdown', (e) => {
@@ -1988,8 +2002,8 @@
     const rect = getActiveLeafRect();
     const nextDir = L.decideSplitDirection({ width: rect.w, height: rect.h }, appState.splitMode);
     $('file-split-hint').textContent = fileReplaceCheckbox.checked
-      ? '将在当前聚焦格子里打开'
-      : `即将${nextDir === 'horizontal' ? '左右分屏 ◫' : '上下分屏 ⬓'}打开（按当前格子宽高比）`;
+      ? t('fileReplaceHint')
+      : (nextDir === 'horizontal' ? t('fileSplitHintHoriz') : t('fileSplitHintVert'));
 
     renderWorkspaceSwitcher();
     loadDirectoryIntoPicker(pickerDir);
@@ -2024,14 +2038,14 @@
       renderBreadcrumb(res.dir, res.parent);
       pickerItems = [];
       if (res.parent) {
-        pickerItems.push({ name: '..', path: res.parent, isDir: true, rel: '返回上一级' });
+        pickerItems.push({ name: '..', path: res.parent, isDir: true, rel: t('parentDir') });
       }
       for (const e of res.entries) {
         pickerItems.push({
           name: e.name,
           path: e.path,
           isDir: e.isDir,
-          rel: e.isDir ? '目录' : formatBytes(e.size),
+          rel: e.isDir ? t('dirLabel') : formatBytes(e.size),
         });
       }
       pickerSelectedIdx = 0;
@@ -2109,7 +2123,7 @@
   function renderPickerList() {
     fileListEl.innerHTML = '';
     if (pickerItems.length === 0) {
-      fileListEl.innerHTML = `<div class="empty-pane"><div class="empty-desc">没有匹配的文件</div></div>`;
+      fileListEl.innerHTML = `<div class="empty-pane"><div class="empty-desc">${escapeHtml(t('noMatches'))}</div></div>`;
       return;
     }
     pickerItems.forEach((item, idx) => {
@@ -2216,18 +2230,18 @@
     chatLinksBody.innerHTML = '';
     const { files, urls } = appState.chatLinks;
     if (files.length === 0 && urls.length === 0) {
-      chatLinksBody.innerHTML = `<div class="muted" style="padding:12px;text-align:center;">本对话中暂未检测到文件或网址链接。<br>当 Agent 在回复里给出文件链接或本地服务 URL 时，会实时同步到这里，点击即可自动分屏打开。</div>`;
+      chatLinksBody.innerHTML = `<div class="muted" style="padding:12px;text-align:center;">${t('noChatLinks')}</div>`;
       return;
     }
 
     if (urls.length > 0) {
       const sec = document.createElement('div');
-      sec.innerHTML = `<div class="section-label">网址 (${urls.length})</div>`;
+      sec.innerHTML = `<div class="section-label">${escapeHtml(t('urlsHeader', { n: urls.length }))}</div>`;
       for (const u of urls) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'list-item';
-        btn.innerHTML = `<span>🌐</span><span class="list-item-name">${escapeHtml(u.host)}</span><span class="list-item-rel">${escapeHtml(u.path)}</span><span class="source-tag">${u.isLocal ? '本地' : '外网'}</span>`;
+        btn.innerHTML = `<span>🌐</span><span class="list-item-name">${escapeHtml(u.host)}</span><span class="list-item-rel">${escapeHtml(u.path)}</span><span class="source-tag">${escapeHtml(u.isLocal ? t('tagLocal') : t('tagExternal'))}</span>`;
         btn.title = u.url;
         btn.addEventListener('click', (e) => {
           chatLinksPopover.classList.add('hidden');
@@ -2241,13 +2255,13 @@
 
     if (files.length > 0) {
       const sec = document.createElement('div');
-      sec.innerHTML = `<div class="section-label">文件 (${files.length})</div>`;
+      sec.innerHTML = `<div class="section-label">${escapeHtml(t('filesHeader', { n: files.length }))}</div>`;
       for (const f of files) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'list-item';
         const lineTag = f.line ? `#L${f.line}${f.endLine ? '-' + f.endLine : ''}` : '';
-        const srcText = f.source === 'chat' ? '回复链接' : f.source === 'edited' ? '已修改' : '已读取';
+        const srcText = f.source === 'chat' ? t('srcChat') : f.source === 'edited' ? t('srcEdited') : t('srcRead');
         btn.innerHTML = `<span>📄</span><span class="list-item-name">${escapeHtml(f.name)}${escapeHtml(lineTag)}</span><span class="list-item-rel">${escapeHtml(f.path)}</span><span class="source-tag">${srcText}</span>`;
         btn.title = f.path;
         btn.addEventListener('click', (e) => {
@@ -2276,7 +2290,7 @@
   autoOpenChatCheckbox.addEventListener('change', () => {
     appState.autoOpenChatLinks = autoOpenChatCheckbox.checked;
     scheduleSaveState();
-    showToast(appState.autoOpenChatLinks ? '已开启：对话新链接自动分屏打开' : '已关闭自动分屏打开');
+    showToast(appState.autoOpenChatLinks ? t('autoOpenOn') : t('autoOpenOff'));
   });
 
   document.addEventListener('click', (e) => {
@@ -2297,7 +2311,7 @@
     appState.root = L.resetAllRatios(appState.root);
     renderStage();
     scheduleSaveState();
-    showToast('已重置为均等分屏');
+    showToast(t('resetRatiosToast'));
   });
 
   document.querySelectorAll('.sm-btn').forEach((btn) => {
@@ -2330,6 +2344,7 @@
   // Bootstrap: Theme + Workspace Sync + Initial State + Pollers
   // -------------------------------------------------------------------------
   async function init() {
+    I18N.applyDom(document);
     syncTheme();
 
     const applyWorkspaces = (uris) => {
@@ -2356,6 +2371,8 @@
         : [];
       if (initialUris.length > 0) {
         applyWorkspaces(initialUris);
+      } else if (urlParams.get('workspace')) {
+        applyWorkspaces([urlParams.get('workspace')]);
       } else {
         await loadPersistedState();
       }

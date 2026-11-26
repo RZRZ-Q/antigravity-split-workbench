@@ -8,6 +8,23 @@
   A smart BSP auto-splitting side-pane workbench plugin for Antigravity App — view files, web previews (<code>localhost</code> &amp; zero-server local HTML), real interactive PTY terminals, and session artifacts side-by-side or stacked.
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/demo-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/demo-light.png" />
+    <img src="./assets/demo-light.png" width="100%" alt="Split Workbench 3-pane demo showing syntax-highlighted file with Quote popover, zero-server HTML preview, and interactive PTY terminal" />
+  </picture>
+</p>
+
+<details>
+<summary>View both Light &amp; Dark theme previews</summary>
+
+| Light Theme | Dark Theme |
+| :---: | :---: |
+| ![Split Workbench Light Theme](./assets/demo-light.png) | ![Split Workbench Dark Theme](./assets/demo-dark.png) |
+
+</details>
+
 ---
 
 ## Features / 核心特性
@@ -24,7 +41,7 @@
 - **Quote & Chat Links（划词/点行号 Quote & 对话链接捕获）**:
   - Select text or click / `Shift+Click` line numbers to pop a floating **Quote / 提问 / 复制** toolbar (`addArtifactComment` + clipboard + `⌘Enter` direct send via `agent.sendMessage`). Terminal selections also support one-click Quote.
   - **Chat Links** badge watches the current conversation's `transcript.jsonl` to surface files (`#L` line jumps) and URLs mentioned by the agent for one-click split opening.
-- **100% Offline Frontend Assets & Native Theme Sync**: `xterm.js`, `marked`, and `highlight.js` are vendored locally; UI colors sync automatically with Antigravity Light/Dark themes.
+- **100% Offline Frontend Assets, Auto EN/ZH UI & Native Theme Sync**: `xterm.js`, `marked`, and `highlight.js` are vendored locally; UI automatically matches English or Chinese locale (`?lang=en|zh`) and Antigravity Light/Dark themes.
 
 ---
 
