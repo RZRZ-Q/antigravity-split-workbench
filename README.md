@@ -90,6 +90,21 @@ ln -s "$(pwd)/antigravity-split-workbench" ~/.gemini/config/plugins/split-workbe
 
 ---
 
+## Web Preview Compatibility / 网页预览兼容性
+
+Because Antigravity sidecar UIs render inside standard webviews, the Web Preview pane embeds pages via `<iframe>`:
+
+- **Always supported (100% interactive)**:
+  - **Local dev servers**: `localhost:5173` (Vite), `3000` (Next.js/React), `8000/docs` (FastAPI Swagger), `8501` (Streamlit), `7860` (Gradio), etc. — just type the port number.
+  - **Zero-server local `.html` files**: Paste a local `.html` path into the URL bar or click **🌐 Preview** on any `.html` file pane.
+  - **Embeddable developer docs & tools** *(verified)*:
+    - Docs: [Python](https://docs.python.org/3/), [Node.js API](https://nodejs.org/docs/latest/api/), [TypeScript](https://www.typescriptlang.org/docs/), [React](https://react.dev/), [Tailwind CSS](https://tailwindcss.com/docs), [Vite](https://vite.dev/), [Wikipedia](https://en.wikipedia.org/wiki/Main_Page)
+    - Interactive tools: [Excalidraw](https://excalidraw.com/), [Mermaid Live](https://mermaid.live/), [JSON Crack](https://jsoncrack.com/), [httpbin](https://httpbin.org/)
+- **Sites that block iframe embedding (`X-Frame-Options` / `CSP: frame-ancestors`)**:
+  - Account-protected or strict anti-clickjacking sites (e.g. Google, GitHub, MDN, arXiv) disallow iframe embedding by design. Split Workbench automatically detects these headers and offers one-click **Open in Browser** or **View Snapshot Here** (renders a live headless screenshot right inside the split pane for side-by-side reference).
+
+---
+
 ## Requirements & Architecture
 
 - **Runtime**: Node.js >= 20, Python 3 (built-in `pty` module; macOS / Linux).
