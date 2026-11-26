@@ -1,11 +1,31 @@
 <p align="center">
-  <img src="./assets/logo.svg" width="84" height="84" alt="Split Workbench Logo" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/banner-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="./assets/banner-light.png" />
+    <img src="./assets/banner-light.png" width="100%" alt="Split Workbench — Smart Auto-Splitting Side Pane for Google Antigravity" />
+  </picture>
 </p>
 
-<h1 align="center">Split Workbench for Google Antigravity</h1>
+<p align="center">
+  <b>English</b> &nbsp;·&nbsp; <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
 <p align="center">
-  A smart BSP auto-splitting side-pane workbench plugin for Antigravity App — view files, web previews (<code>localhost</code> &amp; zero-server local HTML), real interactive PTY terminals, and session artifacts side-by-side or stacked.
+  <a href="https://github.com/RZRZ-Q/antigravity-split-workbench/releases/latest">
+    <img src="https://img.shields.io/badge/release-v0.2.1-3b82f6?style=flat-square" alt="Release v0.2.1" />
+  </a>
+  <img src="https://img.shields.io/badge/Antigravity-Sidecar%20Plugin-10b981?style=flat-square" alt="Antigravity Plugin" />
+  <img src="https://img.shields.io/badge/Node.js-%3E%3D20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js >= 20" />
+  <img src="https://img.shields.io/badge/PTY-Python%203-f59e0b?style=flat-square&logo=python&logoColor=white" alt="Python 3 PTY" />
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-64748b?style=flat-square" alt="Platform macOS | Linux" />
+  <img src="https://img.shields.io/badge/UI-100%25%20Offline%20%7C%20EN%2FZH-8b5cf6?style=flat-square" alt="Offline EN/ZH UI" />
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/license-MIT-0ea5e9?style=flat-square" alt="MIT License" />
+  </a>
+</p>
+
+<p align="center">
+  A smart BSP auto-splitting auxiliary-pane workbench for <b>Google Antigravity App</b> — view multiple workspace files, <code>localhost</code> &amp; zero-server local HTML previews, real interactive PTY terminals, and session artifacts side-by-side or stacked inside one pane.
 </p>
 
 <p align="center">
@@ -27,25 +47,25 @@
 
 ---
 
-## Features / 核心特性
+## Features
 
-- **Smart Auto-Split BSP Layout（智能自动分屏）**: Automatically decides whether to split **left/right** or **top/bottom** based on the focused pane's aspect ratio (`width > height × 1.1` → horizontal, else vertical), plus manual **Auto / Horizontal / Vertical** mode toggles.
-- **Per-Pane Split Orientation Toggle（单窗口自由切换横/竖）**: Click `⇅` / `⇄` on any pane header, press `⌘⇧R`, or right-click any divider to flip that pane group between left/right and top/bottom in place.
-- **Zero-Reload Flat Geometry（零重载分屏与拖拽）**: Resizing gutters, splitting panes, maximizing, or dragging pane headers to swap positions never reloads open `<iframe>` previews or disconnects running PTY terminals.
-- **Per-Pane Colors（分屏颜色标记）**: Automatically assigns distinct harmonious colors to each new split pane; click any pane's color dot to choose from 8 presets, pick any custom hex color, or clear color.
-- **4 Built-in Pane Types（四种内置面板）**:
-  - **Files**: Fuzzy workspace file search (`⌘P`) & directory browser, syntax highlighting, Markdown preview/source toggle, image & PDF viewer, live disk auto-reload, optional lightweight inline editing (`⌘S`), and a native-style `⋮` menu (**Copy Content**, **Download File**, **Copy Path**, **In-file Search `⌘F`**, **Reveal in Finder**).
-  - **Web Preview**: Back/Forward/Reload history, auto-discovery of listening `localhost` dev ports (`lsof`), quick port input (`5173`), **zero-server local `.html` preview** (HMAC-scoped `/preview/` routes), plus a full native-style browser toolbar (**Download HTML**, **Element Inspector & Quote** for local HTML previews, **Headless Screenshot & Quote** with one-click split view/download, and **Open External**).
-  - **Real Interactive Terminal**: Zero-native-build PTY shell powered by Python 3 `pty` + offline-vendored `xterm.js` (256-color, resize-aware, multi-terminal, clicking `http://localhost:...` opens a split Web Preview pane automatically).
+- **Smart Auto-Split BSP Layout**: Automatically chooses **horizontal (left/right)** or **vertical (top/bottom)** splits based on the focused pane's aspect ratio (`width > height × 1.1` → horizontal, otherwise vertical), with toolbar overrides for **Auto / Horizontal / Vertical** modes.
+- **Per-Pane Split Orientation Toggle**: Click `⇅` / `⇄` on any pane header, press `⌘⇧R`, or right-click any divider gutter to flip that pane group between left/right and top/bottom in place.
+- **Zero-Reload Flat Geometry**: Splitting panes, resizing dividers, maximizing, or dragging pane headers to swap positions never reloads embedded `<iframe>` previews or disconnects running PTY terminals.
+- **Per-Pane Tab Colors**: Automatically assigns distinct harmonious colors from an 8-color palette to each new split pane; click any pane's color dot to pick a preset, choose a custom hex color, or clear color.
+- **4 Built-in Pane Types**:
+  - **Files**: Fuzzy workspace file search (`⌘P`) & directory browser, syntax highlighting, Markdown preview/source toggle, image & PDF viewer, live disk auto-reload, optional lightweight inline editing (`⌘S`), and a native-style `⋮` overflow menu (**Copy Content**, **Download File**, **Copy Path**, **In-File Search `⌘F`**, **Reveal in Finder**).
+  - **Web Preview**: Back/Forward/Reload history, auto-discovery of listening `localhost` dev ports (`lsof`), quick port input (`5173`), **zero-server local `.html` preview** (HMAC-scoped `/preview/` routes), automatic `X-Frame-Options` / `CSP` detection with inline snapshot fallback, plus a full browser toolbar (**Download HTML**, **Element Inspector & Quote** for local HTML previews, **Headless Screenshot & Quote**, and **Open External**).
+  - **Real Interactive Terminal**: Zero-native-build PTY shell powered by Python 3 `pty` + offline-vendored `xterm.js` (256-color, resize-aware, multi-terminal; clicking `http://localhost:...` opens a split Web Preview automatically).
   - **Session Artifacts**: Automatically follows `window.sidecar.conversationId` to browse and live-preview files in `<appData>/brain/<conversationId>/`.
-- **Quote & Chat Links（划词/点行号 Quote & 对话链接捕获）**:
-  - Select text or click / `Shift+Click` line numbers to pop a floating **Quote / 提问 / 复制** toolbar (`addArtifactComment` + clipboard + `⌘Enter` direct send via `agent.sendMessage`). Terminal selections also support one-click Quote.
-  - **Chat Links** badge watches the current conversation's `transcript.jsonl` to surface files (`#L` line jumps) and URLs mentioned by the agent for one-click split opening.
+- **Quote & Live Chat Links**:
+  - Select text or click / `Shift+Click` line numbers to open a floating **Quote / Comment / Copy** toolbar (`addArtifactComment` + clipboard + `⌘Enter` direct send via `agent.sendMessage`). Terminal selections also support one-click Quote.
+  - **Chat Links** watches the current conversation's `transcript.jsonl` to surface files (`#L` line jumps) and URLs mentioned by the agent for one-click split opening.
 - **100% Offline Frontend Assets, Auto EN/ZH UI & Native Theme Sync**: `xterm.js`, `marked`, and `highlight.js` are vendored locally; UI automatically matches English or Chinese locale (`?lang=en|zh`) and Antigravity Light/Dark themes.
 
 ---
 
-## Installation / 安装方式
+## Installation
 
 ### Option 1: Antigravity App (Recommended)
 
@@ -74,7 +94,7 @@ ln -s "$(pwd)/antigravity-split-workbench" ~/.gemini/config/plugins/split-workbe
 
 ---
 
-## Keyboard Shortcuts / 快捷键
+## Keyboard Shortcuts
 
 | Shortcut | Action |
 | :--- | :--- |
@@ -90,7 +110,7 @@ ln -s "$(pwd)/antigravity-split-workbench" ~/.gemini/config/plugins/split-workbe
 
 ---
 
-## Web Preview Compatibility / 网页预览兼容性
+## Web Preview Compatibility
 
 Because Antigravity sidecar UIs render inside standard webviews, the Web Preview pane embeds pages via `<iframe>`:
 
@@ -113,7 +133,7 @@ Because Antigravity sidecar UIs render inside standard webviews, the Web Preview
 ### Run Tests & Standalone Debug
 
 ```bash
-# Run layout unit tests + live HTTP / Auth / FS / PTY SSE smoke tests
+# Run layout unit tests + live HTTP / Auth / FS / PTY SSE / screenshot smoke tests
 node test/smoke.mjs
 
 # Standalone local browser preview
