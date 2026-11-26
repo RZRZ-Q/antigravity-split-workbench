@@ -30,6 +30,7 @@
   const chatLinksPopover = $('chat-links-popover');
   const chatLinksBody = $('chat-links-body');
   const autoOpenChatCheckbox = $('auto-open-chat-links');
+  const fileMenuPopoverEl = $('file-menu-popover');
   const colorPopoverEl = $('color-popover');
   const colorSwatchesEl = $('color-swatches');
   const colorCustomInputEl = $('color-custom-input');
@@ -154,12 +155,78 @@
   }
 
   let toastTimer = null;
-  function showToast(msg, ms = 2200) {
-    toastEl.textContent = msg;
+  function showToast(msg, ms = 2200, actions = []) {
+    toastEl.innerHTML = '';
+    const span = document.createElement('span');
+    span.textContent = msg;
+    toastEl.appendChild(span);
+    for (const act of actions) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'toast-action';
+      b.textContent = act.label;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toastEl.classList.add('hidden');
+        act.onClick();
+      });
+      toastEl.appendChild(b);
+    }
     toastEl.classList.remove('hidden');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toastEl.classList.add('hidden'), ms);
+    toastTimer = setTimeout(() => toastEl.classList.add('hidden'), actions.length > 0 ? Math.max(ms, 5500) : ms);
   }
+
+  function triggerDownload(url, filename = '') {
+    const a = document.createElement('a');
+    a.href = url;
+    if (filename) a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  // -------------------------------------------------------------------------
+  // Shared File Overflow Menu Popover (Copy Content, Download, Copy Path, Search, Reveal)
+  // -------------------------------------------------------------------------
+  let activeFileMenuHandlers = null;
+
+  function hideFileMenu() {
+    activeFileMenuHandlers = null;
+    fileMenuPopoverEl.classList.add('hidden');
+  }
+
+  function openFileMenu(anchorEl, handlers) {
+    activeFileMenuHandlers = handlers;
+    const copyContentBtn = fileMenuPopoverEl.querySelector('[data-file-action="copy-content"]');
+    const searchBtn = fileMenuPopoverEl.querySelector('[data-file-action="search"]');
+    if (copyContentBtn) copyContentBtn.classList.toggle('hidden', !handlers.canCopyContent);
+    if (searchBtn) searchBtn.classList.toggle('hidden', !handlers.canSearch);
+
+    fileMenuPopoverEl.classList.remove('hidden');
+    const aRect = anchorEl.getBoundingClientRect();
+    const mRect = fileMenuPopoverEl.getBoundingClientRect();
+    const left = Math.max(8, Math.min(window.innerWidth - mRect.width - 8, aRect.right - mRect.width));
+    const top = Math.min(window.innerHeight - mRect.height - 8, aRect.bottom + 5);
+    fileMenuPopoverEl.style.left = `${Math.round(left)}px`;
+    fileMenuPopoverEl.style.top = `${Math.round(top)}px`;
+  }
+
+  fileMenuPopoverEl.querySelectorAll('[data-file-action]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const action = btn.dataset.fileAction;
+      const handlers = activeFileMenuHandlers;
+      hideFileMenu();
+      if (!handlers) return;
+      if (action === 'copy-content') handlers.copyContent?.();
+      else if (action === 'download') handlers.download?.();
+      else if (action === 'copy-path') handlers.copyPath?.();
+      else if (action === 'search') handlers.openSearch?.();
+      else if (action === 'reveal') handlers.reveal?.();
+    });
+  });
 
   // -------------------------------------------------------------------------
   // Theme Sync (detect light/dark from host CSS variable --background)
@@ -781,6 +848,9 @@
     if (!colorPopoverEl.classList.contains('hidden') && !colorPopoverEl.contains(e.target) && !e.target.closest?.('.pane-color-btn')) {
       hideColorPopover();
     }
+    if (!fileMenuPopoverEl.classList.contains('hidden') && !fileMenuPopoverEl.contains(e.target) && !e.target.closest?.('.file-more-btn')) {
+      hideFileMenu();
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -1020,10 +1090,133 @@
       subbar.appendChild(pathLabel);
     }
 
+    // In-file Find Bar (Search / ⌘F)
+    const findBar = document.createElement('div');
+    findBar.className = 'find-bar hidden';
+    const findInput = document.createElement('input');
+    findInput.className = 'find-input';
+    findInput.type = 'text';
+    findInput.placeholder = t('findPlaceholder');
+    const findCountEl = document.createElement('span');
+    findCountEl.className = 'find-count';
+    findCountEl.textContent = '';
+    const btnFindPrev = makeIconBtn('↑', 'Previous (Shift+Enter)', () => stepFind(-1));
+    const btnFindNext = makeIconBtn('↓', 'Next (Enter)', () => stepFind(1));
+    const btnFindClose = makeIconBtn('✕', t('close'), () => closeFindBar());
+    findBar.append(findInput, findCountEl, btnFindPrev, btnFindNext, btnFindClose);
+
     const scrollEl = document.createElement('div');
     scrollEl.className = 'file-scroll';
 
-    view.body.append(subbar, scrollEl);
+    view.body.append(subbar, findBar, scrollEl);
+
+    let findMatches = [];
+    let findIdx = -1;
+
+    function clearFindHighlights() {
+      scrollEl.querySelectorAll('mark.find-hit').forEach((mark) => {
+        const parent = mark.parentNode;
+        if (parent) {
+          parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+          parent.normalize();
+        }
+      });
+      findMatches = [];
+      findIdx = -1;
+    }
+
+    function applyFindHighlights(query) {
+      clearFindHighlights();
+      const q = String(query || '').trim();
+      if (!q) {
+        findCountEl.textContent = '';
+        return;
+      }
+      const lowerQ = q.toLowerCase();
+      const walker = document.createTreeWalker(scrollEl, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          const parent = node.parentElement;
+          if (!parent || parent.closest('.code-ln, script, style, textarea')) return NodeFilter.FILTER_REJECT;
+          return node.nodeValue.toLowerCase().includes(lowerQ)
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_SKIP;
+        },
+      });
+      const textNodes = [];
+      let cur;
+      while ((cur = walker.nextNode())) textNodes.push(cur);
+
+      const MAX_HITS = 500;
+      for (const node of textNodes) {
+        if (findMatches.length >= MAX_HITS) break;
+        const text = node.nodeValue;
+        const lower = text.toLowerCase();
+        let pos = 0;
+        let idx = lower.indexOf(lowerQ, pos);
+        if (idx === -1) continue;
+        const frag = document.createDocumentFragment();
+        while (idx !== -1 && findMatches.length < MAX_HITS) {
+          if (idx > pos) frag.appendChild(document.createTextNode(text.slice(pos, idx)));
+          const mark = document.createElement('mark');
+          mark.className = 'find-hit';
+          mark.textContent = text.slice(idx, idx + q.length);
+          frag.appendChild(mark);
+          findMatches.push(mark);
+          pos = idx + q.length;
+          idx = lower.indexOf(lowerQ, pos);
+        }
+        if (pos < text.length) frag.appendChild(document.createTextNode(text.slice(pos)));
+        node.parentNode?.replaceChild(frag, node);
+      }
+
+      if (findMatches.length === 0) {
+        findCountEl.textContent = t('findNoMatches');
+      } else {
+        findIdx = 0;
+        focusCurrentFindMatch();
+      }
+    }
+
+    function focusCurrentFindMatch() {
+      if (findMatches.length === 0) return;
+      findMatches.forEach((m, i) => m.classList.toggle('current', i === findIdx));
+      findCountEl.textContent = `${findIdx + 1} / ${findMatches.length}`;
+      findMatches[findIdx]?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+
+    function stepFind(delta) {
+      if (findMatches.length === 0) return;
+      findIdx = (findIdx + delta + findMatches.length) % findMatches.length;
+      focusCurrentFindMatch();
+    }
+
+    function openFindBar() {
+      if (editMode) return;
+      findBar.classList.remove('hidden');
+      findInput.focus();
+      findInput.select();
+      if (findInput.value) applyFindHighlights(findInput.value);
+    }
+
+    function closeFindBar() {
+      clearFindHighlights();
+      findBar.classList.add('hidden');
+      findCountEl.textContent = '';
+    }
+
+    findInput.addEventListener('input', () => applyFindHighlights(findInput.value));
+    findInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        stepFind(e.shiftKey ? -1 : 1);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeFindBar();
+      }
+    });
+
+    view.openSearch = openFindBar;
 
     function getActiveSelectionContext() {
       // 1. Prefer mouse text selection inside this pane
@@ -1164,7 +1357,40 @@
 
     const btnRefresh = makeIconBtn('↻', t('refresh'), () => loadFile(false));
 
-    view.customActions.append(btnPreviewHtml, btnToggleMd, btnQuote, btnEdit, btnSave, btnRefresh);
+    const btnMore = makeIconBtn('⋮', t('moreActionsTitle'), () => {
+      if (!currentPath) return;
+      const isText = fileData && (fileData.kind === 'text' || fileData.kind === 'markdown');
+      openFileMenu(btnMore, {
+        canCopyContent: Boolean(isText && typeof fileData.content === 'string'),
+        canSearch: Boolean(isText && !editMode),
+        async copyContent() {
+          if (!fileData?.content) return;
+          await copyTextSilent(fileData.content);
+          showToast(t('copiedContent'));
+        },
+        download() {
+          triggerDownload(withTokenUrl(`/api/file/raw?path=${encodeURIComponent(currentPath)}&download=1`), basename(currentPath));
+        },
+        async copyPath() {
+          await copyTextSilent(currentPath);
+          showToast(t('copiedPath'));
+        },
+        openSearch() {
+          openFindBar();
+        },
+        async reveal() {
+          try {
+            await apiPost('/api/fs/reveal', { path: currentPath });
+            showToast(t('revealedFinder'));
+          } catch (err) {
+            showToast(t('revealErr', { err: err.message }));
+          }
+        },
+      });
+    });
+    btnMore.classList.add('file-more-btn');
+
+    view.customActions.append(btnPreviewHtml, btnToggleMd, btnQuote, btnEdit, btnSave, btnRefresh, btnMore);
 
     function flashUpdated() {
       view.statusPill.textContent = t('updatedPill');
@@ -1457,8 +1683,69 @@
     if (currentUrl && isSelfOriginUrl(currentUrl)) currentUrl = '';
     view.titleEl.textContent = localHtmlPath ? basename(localHtmlPath) : (currentUrl ? shortHost(currentUrl) : t('paneWeb'));
 
+    const navHistory = [];
+    let navIndex = -1;
+    let inspectActive = false;
+    let inspectCleanup = null;
+
     const bar = document.createElement('div');
     bar.className = 'web-bar';
+
+    function makeSvgIconBtn(svgHtml, title, onClick) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'icon-btn';
+      b.draggable = false;
+      b.title = title;
+      b.innerHTML = svgHtml;
+      b.addEventListener('pointerdown', (e) => e.stopPropagation());
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onClick(e);
+      });
+      return b;
+    }
+
+    const btnBack = makeSvgIconBtn(
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M10 3.5L5.5 8 10 12.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      t('webBackTitle'),
+      () => {
+        if (navIndex > 0) {
+          navIndex -= 1;
+          const entry = navHistory[navIndex];
+          navigate(entry.localHtmlPath || entry.url, { pushHistory: false });
+        }
+      }
+    );
+    const btnFwd = makeSvgIconBtn(
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6 3.5L10.5 8 6 12.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      t('webForwardTitle'),
+      () => {
+        if (navIndex >= 0 && navIndex < navHistory.length - 1) {
+          navIndex += 1;
+          const entry = navHistory[navIndex];
+          navigate(entry.localHtmlPath || entry.url, { pushHistory: false });
+        }
+      }
+    );
+    const btnReload = makeSvgIconBtn(
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 8a5 5 0 1 1-1.4-3.5M13 2.5v2.6h-2.6" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      t('refresh'),
+      () => {
+        stopInspect();
+        if (iframeEl && currentUrl) {
+          iframeEl.src = currentUrl;
+        } else {
+          renderStartScreen();
+        }
+      }
+    );
+
+    function syncNavButtons() {
+      btnBack.disabled = navIndex <= 0;
+      btnFwd.disabled = navIndex < 0 || navIndex >= navHistory.length - 1;
+    }
+    syncNavButtons();
 
     const urlInput = document.createElement('input');
     urlInput.className = 'web-url-input';
@@ -1466,17 +1753,83 @@
     urlInput.placeholder = t('webPlaceholder');
     urlInput.value = localHtmlPath || currentUrl;
 
-    const btnGo = makeMiniBtn(t('goBtn'), t('goBtnTitle'), () => navigate(urlInput.value));
-    const btnReload = makeIconBtn('↻', t('refresh'), () => {
-      if (iframeEl && currentUrl) {
-        iframeEl.src = currentUrl;
-      } else {
-        renderStartScreen();
+    const btnDownload = makeSvgIconBtn(
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2.5v7.5m0 0L5.2 7.2M8 10l2.8-2.8M3 12.5h10" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      t('webDownloadTitle'),
+      () => {
+        if (!currentUrl) {
+          showToast(t('noUrlYet'));
+          return;
+        }
+        if (localHtmlPath) {
+          triggerDownload(withTokenUrl(`/api/file/raw?path=${encodeURIComponent(localHtmlPath)}&download=1`), basename(localHtmlPath));
+        } else {
+          triggerDownload(withTokenUrl(`/api/web/download?url=${encodeURIComponent(currentUrl)}`));
+        }
       }
-    });
-    const btnExt = makeIconBtn('↗', t('openExtTitle'), () => {
-      if (currentUrl) window.open(currentUrl, '_blank', 'noopener,noreferrer');
-    });
+    );
+
+    const btnInspect = makeSvgIconBtn(
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="7.5" cy="7.5" r="4.8" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2.2 1.6"/><path d="M8.5 8.5L13.5 11l-2.3.7-.7 2.3L8.5 8.5z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>',
+      t('webInspectTitle'),
+      () => toggleInspect()
+    );
+
+    const btnShot = makeSvgIconBtn(
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2.5 5.2A1.2 1.2 0 0 1 3.7 4h1.6l1-1.3h3.4l1 1.3h1.6a1.2 1.2 0 0 1 1.2 1.2v6.6a1.2 1.2 0 0 1-1.2 1.2H3.7a1.2 1.2 0 0 1-1.2-1.2V5.2z" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8.4" r="2.2" stroke="currentColor" stroke-width="1.3"/></svg>',
+      t('webShotTitle'),
+      async () => {
+        if (!currentUrl) {
+          showToast(t('noUrlYet'));
+          return;
+        }
+        const rect = contentHost.getBoundingClientRect();
+        btnShot.classList.add('busy');
+        showToast(t('webShotRunning'), 2000);
+        try {
+          const res = await apiPost('/api/web/screenshot', {
+            url: currentUrl,
+            width: Math.round(rect.width) || 1024,
+            height: Math.round(rect.height) || 720,
+            conversationId: convId(),
+          });
+          if (window.sidecar?.ui?.addArtifactComment) {
+            window.sidecar.ui.addArtifactComment({
+              uri: `file://${encodeURI(res.path)}`,
+              selection: `Screenshot of ${localHtmlPath || currentUrl} (${res.width}x${res.height})`,
+              comment: `Web screenshot: ${res.name}`,
+              pageTitle: res.name,
+            });
+          }
+          await copyTextSilent(res.path);
+          showToast(t('webShotDone', { name: res.name }), 5500, [
+            {
+              label: t('webOpenSplit'),
+              onClick: () => {
+                setActivePane(leaf.id);
+                openPane('file', { path: res.path }, { deduplicate: true });
+              },
+            },
+            {
+              label: t('webDownloadBtn'),
+              onClick: () => triggerDownload(withTokenUrl(`/api/file/raw?path=${encodeURIComponent(res.path)}&download=1`), res.name),
+            },
+          ]);
+        } catch (err) {
+          showToast(t('webShotErr', { err: err.message }), 3200);
+        } finally {
+          btnShot.classList.remove('busy');
+        }
+      }
+    );
+
+    const btnExt = makeSvgIconBtn(
+      '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M9.5 2.5h4v4M13.5 2.5L7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      t('openExtTitle'),
+      () => {
+        if (currentUrl) window.open(currentUrl, '_blank', 'noopener,noreferrer');
+      }
+    );
 
     urlInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -1485,7 +1838,7 @@
       }
     });
 
-    bar.append(urlInput, btnGo, btnReload, btnExt);
+    bar.append(btnBack, btnFwd, btnReload, urlInput, btnDownload, btnInspect, btnShot, btnExt);
 
     const contentHost = document.createElement('div');
     contentHost.style.cssText = 'flex:1;min-height:0;display:flex;flex-direction:column;';
@@ -1493,6 +1846,111 @@
     view.body.append(bar, contentHost);
 
     let iframeEl = null;
+
+    function buildCssSelector(el) {
+      if (!el || el.nodeType !== 1) return '';
+      if (el.id) return `#${el.id}`;
+      const tag = el.tagName.toLowerCase();
+      const classes = typeof el.className === 'string'
+        ? el.className.trim().split(/\s+/).filter(Boolean).slice(0, 2)
+        : [];
+      return classes.length > 0 ? `${tag}.${classes.join('.')}` : tag;
+    }
+
+    function stopInspect() {
+      inspectActive = false;
+      btnInspect.classList.remove('active');
+      if (inspectCleanup) {
+        try { inspectCleanup(); } catch {}
+        inspectCleanup = null;
+      }
+    }
+
+    function toggleInspect() {
+      if (inspectActive) {
+        stopInspect();
+        return;
+      }
+      if (!iframeEl || !currentUrl) {
+        showToast(t('noUrlYet'));
+        return;
+      }
+      let doc;
+      try {
+        doc = iframeEl.contentDocument;
+        if (!doc || !doc.body) throw new Error('Cross-origin');
+      } catch {
+        showToast(t('webInspectCrossOrigin'), 3600);
+        return;
+      }
+
+      inspectActive = true;
+      btnInspect.classList.add('active');
+      showToast(t('webInspectOn'), 2800);
+
+      const overlay = doc.createElement('div');
+      overlay.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483646;border:2px solid #3b82f6;background:rgba(59,130,246,0.14);border-radius:3px;transition:all 40ms ease;display:none;';
+      const badge = doc.createElement('div');
+      badge.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;background:#1e293b;color:#f8fafc;font:11px/1.3 ui-monospace,monospace;padding:2px 6px;border-radius:4px;white-space:nowrap;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.28);';
+      doc.body.append(overlay, badge);
+
+      let hoveredEl = null;
+      const onMove = (ev) => {
+        const target = ev.target;
+        if (!target || target === overlay || target === badge || target === doc.documentElement) return;
+        hoveredEl = target;
+        const r = target.getBoundingClientRect();
+        overlay.style.display = 'block';
+        overlay.style.left = `${r.left}px`;
+        overlay.style.top = `${r.top}px`;
+        overlay.style.width = `${r.width}px`;
+        overlay.style.height = `${r.height}px`;
+        badge.textContent = `${buildCssSelector(target)} · ${Math.round(r.width)}×${Math.round(r.height)}`;
+        badge.style.display = 'block';
+        badge.style.left = `${Math.max(4, Math.min(doc.documentElement.clientWidth - 180, r.left))}px`;
+        badge.style.top = `${Math.max(4, r.top - 22)}px`;
+      };
+
+      const onClick = (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const target = hoveredEl || ev.target;
+        stopInspect();
+        if (!target || target.nodeType !== 1) return;
+        const sel = buildCssSelector(target);
+        const tag = target.tagName.toLowerCase();
+        const snippet = (target.outerHTML || '').slice(0, 1200);
+        const ctx = {
+          path: localHtmlPath || '',
+          title: `${localHtmlPath ? basename(localHtmlPath) : shortHost(currentUrl)} (${sel})`,
+          selection: `Element: ${sel}\n${snippet}`,
+          isTerminal: !localHtmlPath,
+        };
+        sendDirectQuote(ctx, `Element <${tag}> (${sel})`);
+        showToast(t('webInspectQuoted', { tag, sel }), 2600);
+      };
+
+      const onKey = (ev) => {
+        if (ev.key === 'Escape') {
+          ev.preventDefault();
+          stopInspect();
+        }
+      };
+
+      doc.addEventListener('mousemove', onMove, true);
+      doc.addEventListener('click', onClick, true);
+      doc.addEventListener('keydown', onKey, true);
+
+      inspectCleanup = () => {
+        doc.removeEventListener('mousemove', onMove, true);
+        doc.removeEventListener('click', onClick, true);
+        doc.removeEventListener('keydown', onKey, true);
+        overlay.remove();
+        badge.remove();
+      };
+    }
+
+    view.destroy = () => stopInspect();
 
     function shortHost(u) {
       try {
@@ -1506,7 +1964,8 @@
       }
     }
 
-    async function navigate(raw) {
+    async function navigate(raw, { pushHistory = true } = {}) {
+      stopInspect();
       let normalized = normalizeUserUrl(raw);
       if (!normalized) return;
 
@@ -1528,6 +1987,16 @@
         showToast(t('selfNestBlocked'));
         return;
       }
+
+      if (pushHistory) {
+        const cur = navHistory[navIndex];
+        if (!cur || cur.url !== normalized) {
+          navHistory.splice(navIndex + 1);
+          navHistory.push({ url: normalized, localHtmlPath });
+          navIndex = navHistory.length - 1;
+        }
+      }
+      syncNavButtons();
 
       currentUrl = normalized;
       urlInput.value = localHtmlPath || normalized;
@@ -2323,6 +2792,12 @@
     if (mod && !e.shiftKey && e.key.toLowerCase() === 'p') {
       e.preventDefault();
       openFilePicker(false);
+    } else if (mod && !e.shiftKey && e.key.toLowerCase() === 'f') {
+      const activeView = paneViews.get(appState.activePaneId);
+      if (activeView?.openSearch) {
+        e.preventDefault();
+        activeView.openSearch();
+      }
     } else if (mod && e.shiftKey && e.key === '\\') {
       e.preventDefault();
       openPane('empty', {}, { forceDirection: 'horizontal' });

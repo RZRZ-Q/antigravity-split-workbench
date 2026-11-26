@@ -766,6 +766,102 @@ process.on('SIGINT', () => { cleanupAllTerminals(); process.exit(0); });
 process.on('SIGTERM', () => { cleanupAllTerminals(); process.exit(0); });
 process.on('exit', cleanupAllTerminals);
 
+function findChromeBinary() {
+  const candidates =
+    process.platform === 'darwin'
+      ? [
+          '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+          '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+          '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+        ]
+      : process.platform === 'win32'
+        ? [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+          ]
+        : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'];
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
+function captureWebScreenshot({ targetUrl, width = 1024, height = 720, conversationId = '' }) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const chrome = findChromeBinary();
+    if (!chrome) {
+      rejectPromise(new Error('Chrome/Chromium binary not found on this machine'));
+      return;
+    }
+    let parsed;
+    try {
+      parsed = new URL(targetUrl);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('Only http/https URLs can be captured');
+      }
+    } catch (err) {
+      rejectPromise(err);
+      return;
+    }
+
+    const w = Math.max(320, Math.min(1920, Math.round(Number(width) || 1024)));
+    const h = Math.max(240, Math.min(1440, Math.round(Number(height) || 720)));
+    const brainDir = findBrainConvDir(conversationId);
+    const outDir = brainDir ? join(brainDir, 'scratch') : join(getPersistentDataDir(), 'screenshots');
+    mkdirSync(outDir, { recursive: true });
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const name = `web-screenshot-${ts}.png`;
+    const outPath = join(outDir, name);
+
+    const args = [
+      '--headless=new',
+      '--disable-gpu',
+      '--hide-scrollbars',
+      '--no-first-run',
+      '--no-default-browser-check',
+      `--window-size=${w},${h}`,
+      `--screenshot=${outPath}`,
+      parsed.toString(),
+    ];
+
+    execFile(chrome, args, { timeout: 15000 }, (err) => {
+      if (err) {
+        rejectPromise(new Error(`Screenshot failed: ${err.message}`));
+        return;
+      }
+      if (!existsSync(outPath)) {
+        rejectPromise(new Error('Screenshot file was not created'));
+        return;
+      }
+      resolvePromise({ ok: true, path: outPath, name, width: w, height: h });
+    });
+  });
+}
+
+function revealInOsFileManager(absPath) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    if (process.platform === 'darwin') {
+      execFile('open', ['-R', absPath], { timeout: 4000 }, (err) => {
+        if (err) rejectPromise(err);
+        else resolvePromise({ ok: true });
+      });
+    } else if (process.platform === 'win32') {
+      execFile('explorer', [`/select,${absPath}`], { timeout: 4000 }, () => resolvePromise({ ok: true }));
+    } else {
+      execFile('xdg-open', [dirname(absPath)], { timeout: 4000 }, (err) => {
+        if (err) rejectPromise(err);
+        else resolvePromise({ ok: true });
+      });
+    }
+  });
+}
+
+function sanitizeDownloadFilename(name) {
+  return String(name || 'download').replace(/["\\\r\n/]/g, '_');
+}
+
 // ---------------------------------------------------------------------------
 // Agent API bridge (mirrors sidecar_sdk/index.mjs for /_sidecar/*)
 // ---------------------------------------------------------------------------
@@ -1028,11 +1124,86 @@ const server = createServer(async (req, res) => {
         return;
       }
       const ext = extname(abs).toLowerCase();
+      const extra = {};
+      if (url.searchParams.get('download') === '1') {
+        const fname = sanitizeDownloadFilename(basename(abs));
+        extra['Content-Disposition'] = `attachment; filename="${fname}"; filename*=UTF-8''${encodeURIComponent(basename(abs))}`;
+      }
       res.writeHead(200, {
         'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
         'Cache-Control': 'no-store',
+        ...extra,
       });
       res.end(readFileSync(abs));
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/fs/reveal') {
+      const data = await readJsonBody(req);
+      const abs = uriToPath(data.path || '');
+      if (!abs || !isSafeUserPath(abs) || !existsSync(abs)) {
+        sendJson(res, 404, { error: 'Path not found' });
+        return;
+      }
+      await revealInOsFileManager(abs);
+      sendJson(res, 200, { ok: true, path: abs });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/web/download') {
+      const rawUrl = url.searchParams.get('url') || '';
+      let parsed;
+      try {
+        parsed = new URL(rawUrl);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          throw new Error('Invalid protocol');
+        }
+      } catch {
+        res.writeHead(400);
+        res.end('Invalid URL');
+        return;
+      }
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      try {
+        const resp = await fetch(parsed.toString(), { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (!resp.ok) {
+          res.writeHead(502);
+          res.end(`Upstream returned HTTP ${resp.status}`);
+          return;
+        }
+        const buf = Buffer.from(await resp.arrayBuffer());
+        if (buf.length > 15 * 1024 * 1024) {
+          res.writeHead(413);
+          res.end('Page too large to download');
+          return;
+        }
+        const rawBase = basename(parsed.pathname) || parsed.hostname || 'page';
+        const fname = sanitizeDownloadFilename(rawBase.includes('.') ? rawBase : `${rawBase}.html`);
+        res.writeHead(200, {
+          'Content-Type': resp.headers.get('content-type') || 'text/html; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${fname}"`,
+          'Cache-Control': 'no-store',
+        });
+        res.end(buf);
+      } catch (err) {
+        clearTimeout(timer);
+        res.writeHead(502);
+        res.end(`Download failed: ${err.message}`);
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && pathname === '/api/web/screenshot') {
+      const data = await readJsonBody(req);
+      const result = await captureWebScreenshot({
+        targetUrl: String(data.url || ''),
+        width: data.width,
+        height: data.height,
+        conversationId: data.conversationId || process.env.ANTIGRAVITY_CONVERSATION_ID || '',
+      });
+      sendJson(res, 200, result);
       return;
     }
 

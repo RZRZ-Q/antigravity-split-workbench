@@ -34,8 +34,8 @@
 - **Zero-Reload Flat Geometry（零重载分屏与拖拽）**: Resizing gutters, splitting panes, maximizing, or dragging pane headers to swap positions never reloads open `<iframe>` previews or disconnects running PTY terminals.
 - **Per-Pane Colors（分屏颜色标记）**: Automatically assigns distinct harmonious colors to each new split pane; click any pane's color dot to choose from 8 presets, pick any custom hex color, or clear color.
 - **4 Built-in Pane Types（四种内置面板）**:
-  - **Files**: Fuzzy workspace file search (`⌘P`) & directory browser, syntax highlighting, Markdown preview/source toggle, image & PDF viewer, live disk auto-reload, and optional lightweight inline editing (`⌘S`).
-  - **Web Preview**: Auto-discovers locally listening `localhost` dev ports (`lsof`), quick port input (`5173`), and **zero-server local `.html` preview** (automatically serves sibling CSS/JS/images via HMAC-scoped `/preview/` routes).
+  - **Files**: Fuzzy workspace file search (`⌘P`) & directory browser, syntax highlighting, Markdown preview/source toggle, image & PDF viewer, live disk auto-reload, optional lightweight inline editing (`⌘S`), and a native-style `⋮` menu (**Copy Content**, **Download File**, **Copy Path**, **In-file Search `⌘F`**, **Reveal in Finder**).
+  - **Web Preview**: Back/Forward/Reload history, auto-discovery of listening `localhost` dev ports (`lsof`), quick port input (`5173`), **zero-server local `.html` preview** (HMAC-scoped `/preview/` routes), plus a full native-style browser toolbar (**Download HTML**, **Element Inspector & Quote** for local HTML previews, **Headless Screenshot & Quote** with one-click split view/download, and **Open External**).
   - **Real Interactive Terminal**: Zero-native-build PTY shell powered by Python 3 `pty` + offline-vendored `xterm.js` (256-color, resize-aware, multi-terminal, clicking `http://localhost:...` opens a split Web Preview pane automatically).
   - **Session Artifacts**: Automatically follows `window.sidecar.conversationId` to browse and live-preview files in `<appData>/brain/<conversationId>/`.
 - **Quote & Chat Links（划词/点行号 Quote & 对话链接捕获）**:
@@ -79,6 +79,7 @@ ln -s "$(pwd)/antigravity-split-workbench" ~/.gemini/config/plugins/split-workbe
 | Shortcut | Action |
 | :--- | :--- |
 | `⌘P` / `Ctrl+P` | Quick-open workspace file (auto-splits) |
+| `⌘F` / `Ctrl+F` | In-file search inside the active File / Artifact pane |
 | `⌘⇧R` / `Ctrl+Shift+R` | Toggle active pane's split between left/right and top/bottom |
 | `⌘⇧\` / `Ctrl+Shift+\` | Split right (new empty pane) |
 | `⌘⇧-` / `Ctrl+Shift+-` | Split down (new empty pane) |

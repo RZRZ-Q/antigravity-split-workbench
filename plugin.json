@@ -1,7 +1,7 @@
 {
   "name": "split-workbench",
   "displayName": "Split Workbench",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Smart auto-splitting side pane workbench for Antigravity: view files, localhost & local HTML web previews, real interactive PTY terminals, and session artifacts side-by-side or stacked with per-pane colors and Quote support.",
   "logo": "assets/logo.svg",
   "author": {

@@ -162,6 +162,32 @@ async function testLiveServer() {
     const badSigRes = await fetch(`${baseUrl}${previewMeta.previewPath.replace(/^\/preview\/[^/]+\//, '/preview/badbadbad/')}`);
     assert.equal(badSigRes.status, 401);
 
+    // File download attachment header
+    const dlRes = await fetch(
+      `${baseUrl}/api/file/raw?path=${encodeURIComponent(join(ROOT, 'plugin.json'))}&download=1&token=${encodeURIComponent(token)}`
+    );
+    assert.equal(dlRes.status, 200);
+    assert.ok((dlRes.headers.get('content-disposition') || '').includes('attachment'));
+
+    // Web HTML download proxy
+    const webDl = await fetch(
+      `${baseUrl}/api/web/download?url=${encodeURIComponent(`${baseUrl}${previewMeta.previewPath}`)}&token=${encodeURIComponent(token)}`
+    );
+    assert.equal(webDl.status, 200);
+    assert.ok((webDl.headers.get('content-disposition') || '').includes('attachment'));
+
+    // Real headless Chrome web screenshot capture
+    const shotRes = await fetch(`${baseUrl}/api/web/screenshot`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ url: `${baseUrl}${previewMeta.previewPath}`, width: 640, height: 420 }),
+    }).then((r) => r.json());
+    assert.equal(shotRes.ok, true);
+    assert.ok(shotRes.path && shotRes.path.endsWith('.png'));
+    const { existsSync, statSync, rmSync } = await import('node:fs');
+    assert.ok(existsSync(shotRes.path) && statSync(shotRes.path).size > 1024);
+    rmSync(shotRes.path, { force: true });
+
     // Real PTY terminal create + SSE stream + command echo + resize + close
     const term = await fetch(`${baseUrl}/api/term/create`, {
       method: 'POST',
