@@ -176,6 +176,13 @@ async function testLiveServer() {
     assert.equal(webDl.status, 200);
     assert.ok((webDl.headers.get('content-disposition') || '').includes('attachment'));
 
+    // Embed pre-check on local preview (embeddable: true)
+    const chkLocal = await fetch(
+      `${baseUrl}/api/web/check-embed?url=${encodeURIComponent(`${baseUrl}${previewMeta.previewPath}`)}`,
+      { headers }
+    ).then((r) => r.json());
+    assert.equal(chkLocal.embeddable, true);
+
     // Real headless Chrome web screenshot capture
     const shotRes = await fetch(`${baseUrl}/api/web/screenshot`, {
       method: 'POST',

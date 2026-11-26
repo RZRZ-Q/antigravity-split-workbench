@@ -862,6 +862,71 @@ function sanitizeDownloadFilename(name) {
   return String(name || 'download').replace(/["\\\r\n/]/g, '_');
 }
 
+async function checkUrlEmbeddable(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { embeddable: true };
+    }
+  } catch {
+    return { embeddable: true };
+  }
+  // Our own /preview/ local HTML route is always embeddable
+  if (parsed.pathname.startsWith('/preview/')) {
+    return { embeddable: true };
+  }
+
+  const probe = async (method) => {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 3000);
+    try {
+      const resp = await fetch(parsed.toString(), {
+        method,
+        redirect: 'follow',
+        signal: ctrl.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 AntigravitySplitWorkbench' },
+      });
+      clearTimeout(timer);
+      return resp;
+    } catch {
+      clearTimeout(timer);
+      return null;
+    }
+  };
+
+  let resp = await probe('HEAD');
+  if (!resp || resp.status === 405 || resp.status === 501) {
+    resp = await probe('GET');
+  }
+  if (!resp) return { embeddable: true };
+
+  // Cancel body immediately if GET
+  try { resp.body?.cancel?.(); } catch {}
+
+  const xfo = (resp.headers.get('x-frame-options') || '').trim();
+  if (xfo) {
+    const lower = xfo.toLowerCase();
+    if (lower.includes('deny') || lower.includes('sameorigin')) {
+      return { embeddable: false, reason: `X-Frame-Options: ${xfo}`, finalUrl: resp.url || rawUrl };
+    }
+  }
+
+  const csp = resp.headers.get('content-security-policy') || '';
+  if (csp) {
+    const m = /(?:^|;)\s*frame-ancestors\s+([^;]+)/i.exec(csp);
+    if (m) {
+      const val = m[1].trim();
+      const tokens = val.toLowerCase().split(/\s+/);
+      if (!tokens.includes('*')) {
+        return { embeddable: false, reason: `CSP: frame-ancestors ${val}`, finalUrl: resp.url || rawUrl };
+      }
+    }
+  }
+
+  return { embeddable: true, finalUrl: resp.url || rawUrl };
+}
+
 // ---------------------------------------------------------------------------
 // Agent API bridge (mirrors sidecar_sdk/index.mjs for /_sidecar/*)
 // ---------------------------------------------------------------------------
@@ -1147,6 +1212,13 @@ const server = createServer(async (req, res) => {
       }
       await revealInOsFileManager(abs);
       sendJson(res, 200, { ok: true, path: abs });
+      return;
+    }
+
+    if (req.method === 'GET' && pathname === '/api/web/check-embed') {
+      const rawUrl = url.searchParams.get('url') || '';
+      const result = await checkUrlEmbeddable(rawUrl);
+      sendJson(res, 200, result);
       return;
     }
 

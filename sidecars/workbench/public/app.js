@@ -1964,7 +1964,108 @@
       }
     }
 
-    async function navigate(raw, { pushHistory = true } = {}) {
+    async function renderInlineSnapshot(targetUrl) {
+      const rect = contentHost.getBoundingClientRect();
+      showToast(t('webShotRunning'), 2000);
+      try {
+        const res = await apiPost('/api/web/screenshot', {
+          url: targetUrl,
+          width: Math.max(800, Math.round(rect.width) || 1024),
+          height: Math.max(600, Math.round(rect.height) || 720),
+          conversationId: convId(),
+        });
+        iframeEl = null;
+        contentHost.innerHTML = '';
+
+        const sbar = document.createElement('div');
+        sbar.className = 'snapshot-bar';
+        const lbl = document.createElement('span');
+        lbl.className = 'muted';
+        lbl.textContent = t('snapshotBarLabel', { host: shortHost(targetUrl) });
+        const sp = document.createElement('span');
+        sp.className = 'spacer';
+        const btnRetake = makeMiniBtn(t('snapshotRetake'), t('webShotTitle'), () => renderInlineSnapshot(targetUrl));
+        const btnQuoteShot = makeMiniBtn(t('quoteBtn'), t('quoteBtnTitle'), async () => {
+          if (window.sidecar?.ui?.addArtifactComment) {
+            window.sidecar.ui.addArtifactComment({
+              uri: `file://${encodeURI(res.path)}`,
+              selection: `Screenshot of ${targetUrl} (${res.width}x${res.height})`,
+              comment: `Web snapshot: ${res.name}`,
+              pageTitle: res.name,
+            });
+          }
+          await copyTextSilent(res.path);
+          showToast(t('webShotDone', { name: res.name }));
+        });
+        const btnDlShot = makeMiniBtn(t('webDownloadBtn'), t('webDownloadTitle'), () => {
+          triggerDownload(withTokenUrl(`/api/file/raw?path=${encodeURIComponent(res.path)}&download=1`), res.name);
+        });
+        sbar.append(lbl, sp, btnRetake, btnQuoteShot, btnDlShot);
+
+        const sWrap = document.createElement('div');
+        sWrap.className = 'snapshot-scroll';
+        const img = document.createElement('img');
+        img.src = withTokenUrl(`/api/file/raw?path=${encodeURIComponent(res.path)}&t=${Date.now()}`);
+        img.alt = res.name;
+        sWrap.appendChild(img);
+
+        contentHost.append(sbar, sWrap);
+      } catch (err) {
+        showToast(t('webShotErr', { err: err.message }), 3200);
+      }
+    }
+
+    function renderEmbedBlockedCard(targetUrl, reason) {
+      iframeEl = null;
+      contentHost.innerHTML = '';
+      const card = document.createElement('div');
+      card.className = 'embed-blocked';
+      card.innerHTML = `
+        <div class="embed-blocked-host">${escapeHtml(shortHost(targetUrl))} · ${escapeHtml(t('embedBlockedTitle'))}</div>
+        <div class="embed-blocked-reason" title="${escapeHtml(reason)}">${escapeHtml(reason)}</div>
+        <div class="embed-blocked-desc">${escapeHtml(t('embedBlockedDesc'))}</div>
+        <div class="embed-blocked-actions"></div>
+      `;
+      const actionsEl = card.querySelector('.embed-blocked-actions');
+      const btnOpenExt = document.createElement('button');
+      btnOpenExt.type = 'button';
+      btnOpenExt.className = 'primary-btn';
+      btnOpenExt.textContent = t('embedBtnBrowser');
+      btnOpenExt.addEventListener('click', () => window.open(targetUrl, '_blank', 'noopener,noreferrer'));
+
+      const btnSnap = document.createElement('button');
+      btnSnap.type = 'button';
+      btnSnap.className = 'qp-btn';
+      btnSnap.style.height = '26px';
+      btnSnap.style.padding = '0 10px';
+      btnSnap.textContent = t('embedBtnSnapshot');
+      btnSnap.addEventListener('click', () => renderInlineSnapshot(targetUrl));
+
+      actionsEl.append(btnOpenExt, btnSnap);
+
+      const forceBtn = document.createElement('button');
+      forceBtn.type = 'button';
+      forceBtn.className = 'embed-force-link';
+      forceBtn.textContent = t('embedBtnForce');
+      forceBtn.addEventListener('click', () => mountIframe(targetUrl));
+      card.appendChild(forceBtn);
+
+      contentHost.appendChild(card);
+    }
+
+    function mountIframe(targetUrl) {
+      if (!iframeEl) {
+        contentHost.innerHTML = '';
+        iframeEl = document.createElement('iframe');
+        iframeEl.className = 'web-frame';
+        iframeEl.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
+        iframeEl.setAttribute('allow', 'clipboard-read; clipboard-write; fullscreen');
+        contentHost.appendChild(iframeEl);
+      }
+      iframeEl.src = targetUrl;
+    }
+
+    async function navigate(raw, { pushHistory = true, forceIframe = false } = {}) {
       stopInspect();
       let normalized = normalizeUserUrl(raw);
       if (!normalized) return;
@@ -2005,15 +2106,20 @@
       appState.root = L.updateLeafState(appState.root, leaf.id, { url: normalized, localHtmlPath });
       scheduleSaveState();
 
-      if (!iframeEl) {
-        contentHost.innerHTML = '';
-        iframeEl = document.createElement('iframe');
-        iframeEl.className = 'web-frame';
-        iframeEl.setAttribute('referrerpolicy', 'no-referrer-when-downgrade');
-        iframeEl.setAttribute('allow', 'clipboard-read; clipboard-write; fullscreen');
-        contentHost.appendChild(iframeEl);
+      // Pre-check X-Frame-Options / CSP frame-ancestors on non-local-preview URLs
+      if (!forceIframe && !localHtmlPath && !normalized.includes('/preview/')) {
+        try {
+          const chk = await apiGet(`/api/web/check-embed?url=${encodeURIComponent(normalized)}`);
+          if (chk && chk.embeddable === false) {
+            renderEmbedBlockedCard(normalized, chk.reason || 'X-Frame-Options');
+            return;
+          }
+        } catch {
+          // fail open
+        }
       }
-      iframeEl.src = normalized;
+
+      mountIframe(normalized);
     }
 
     async function renderStartScreen() {
